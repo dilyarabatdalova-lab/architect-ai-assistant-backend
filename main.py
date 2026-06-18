@@ -15,15 +15,15 @@ DOCUMENTS_DIR = BASE_DIR / "documents"
 VECTOR_DB_DIR = BASE_DIR / "vector_db"
 NO_INFO_ANSWER = "Информация по данному вопросу в базе знаний отсутствует."
 
-# AI_PROVIDER controls how the final answer is generated:
-# none - free demo mode, answer is built from prepared documents only;
-# openai - OpenAI API is used after searching the prepared documents;
-# deepseek - DeepSeek API is used after searching the prepared documents.
 AI_PROVIDER = os.getenv("AI_PROVIDER", "").lower().strip()
 
-# Backward compatibility with the previous USE_OPENAI setting.
 if not AI_PROVIDER:
-    AI_PROVIDER = "openai" if os.getenv("USE_OPENAI", "false").lower() == "true" else "none"
+    if os.getenv("DEEPSEEK_API_KEY"):
+        AI_PROVIDER = "deepseek"
+    elif os.getenv("OPENAI_API_KEY") or os.getenv("USE_OPENAI", "false").lower() == "true":
+        AI_PROVIDER = "openai"
+    else:
+        AI_PROVIDER = "none"
 
 if AI_PROVIDER not in {"none", "openai", "deepseek"}:
     AI_PROVIDER = "none"
@@ -95,6 +95,9 @@ def chat(request: ChatRequest) -> ChatResponse:
     if ai_service is not None and ai_service.is_ready():
         answer = ai_service.answer(question, chunks)
     else:
+        answer = vector_service.build_fallback_answer(question, chunks)
+
+    if not answer.strip():
         answer = vector_service.build_fallback_answer(question, chunks)
 
     if not answer.strip():
