@@ -28,17 +28,18 @@ class OpenAIService:
                 return
 
             self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(api_key=api_key, timeout=20.0)
 
         if provider == "deepseek":
             api_key = os.getenv("DEEPSEEK_API_KEY", "")
             if not api_key:
                 return
 
-            self.model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+            self.model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
             self.client = OpenAI(
                 api_key=api_key,
                 base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                timeout=20.0,
             )
 
     def is_ready(self) -> bool:
@@ -50,29 +51,39 @@ class OpenAIService:
 
         context = self._format_context(chunks)
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            temperature=0.1,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты ИИ-помощник архитектора внутри обучающего приложения. "
-                        "Отвечай только на основании переданного контекста. "
-                        f"Если ответа в контексте нет, напиши строго: {NO_INFO_ANSWER} "
-                        "Не придумывай нормы, цифры, названия документов и разделы."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Вопрос пользователя:\n{question}\n\n"
-                        f"Фрагменты базы знаний:\n{context}\n\n"
-                        "Сформируй краткий понятный ответ. Не добавляй блок источников."
-                    ),
-                },
-            ],
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.1,
+                max_tokens=450,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Ты ИИ-помощник архитектора внутри обучающего приложения. "
+                            "Отвечай на русском языке и только на основании переданного контекста. "
+                            "Если ответа в контексте нет, напиши строго: "
+                            f"{NO_INFO_ANSWER} "
+                            "Не придумывай нормы, цифры, названия документов и разделы. "
+                            "Ответ должен быть самодостаточным для мобильного чата. "
+                            "Не отправляй пользователя смотреть таблицу, раздел, приложение, чертёж или источник, "
+                            "если сами данные не приведены в контексте. "
+                            "Если в контексте сказано только, что значения указаны в таблице, "
+                            "но самих значений нет, напиши, что точные значения в базе знаний не раскрыты."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Вопрос пользователя:\n{question}\n\n"
+                            f"Фрагменты базы знаний:\n{context}\n\n"
+                            "Сформируй краткий понятный ответ без отдельного блока источников."
+                        ),
+                    },
+                ],
+            )
+        except Exception:
+            return ""
 
         return response.choices[0].message.content or ""
 
